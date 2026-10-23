@@ -4,7 +4,8 @@ import { locales } from "../src/i18n/locales";
 import { getDictionary } from "../src/i18n/dictionaries";
 import { sniffMediaMime } from "../src/lib/file-signatures";
 import { departmentInputSchema, inquiryInputSchema, projectInputSchema, studentInputSchema, teamInputSchema } from "../src/lib/validation";
-import { localizedField } from "../src/types/domain";
+import { localizedField, visibleDemoUrl } from "../src/types/domain";
+import { isMissingDemoSchemaError } from "../src/lib/demo-schema";
 
 const localizedBlank = { en: "", ar: "", it: "" };
 const projectBody = {
@@ -84,4 +85,60 @@ test("professional inquiries require consent, valid email, and a sufficiently de
   assert.equal(inquiryInputSchema.safeParse(inquiry).success, true);
   assert.equal(inquiryInputSchema.safeParse({ ...inquiry, consent: false }).success, false);
   assert.equal(inquiryInputSchema.safeParse({ ...inquiry, email: "not-an-email" }).success, false);
+});
+
+test("the public site name is Don Bosco Cairo Projects in every locale", () => {
+  assert.equal(getDictionary("en")["site.name"], "DON BOSCO CAIRO PROJECTS");
+  assert.equal(getDictionary("ar")["site.name"], "مشروعات دون بوسكو القاهرة");
+  assert.equal(getDictionary("it")["site.name"], "Progetti Don Bosco Cairo");
+});
+
+test("project demo links are only published when visible and https", () => {
+  // A normal visible https link is returned (URL() normalises a bare origin).
+  assert.equal(visibleDemoUrl({ demo_url: "https://demo.example.org/project", demo_visible: true }),
+    "https://demo.example.org/project");
+  assert.equal(visibleDemoUrl({ demo_url: "https://demo.example.org", demo_visible: true }),
+    "https://demo.example.org/");
+  // Hidden by the administrator.
+  assert.equal(visibleDemoUrl({ demo_url: "https://demo.example.org", demo_visible: false }), null);
+  // Nothing stored, or only whitespace.
+  assert.equal(visibleDemoUrl({ demo_url: null, demo_visible: true }), null);
+  assert.equal(visibleDemoUrl({ demo_url: "   ", demo_visible: true }), null);
+  assert.equal(visibleDemoUrl({}), null);
+  assert.equal(visibleDemoUrl(null), null);
+  // Never render an unsafe or malformed value, even if it reached the database.
+  assert.equal(visibleDemoUrl({ demo_url: "javascript:alert(1)", demo_visible: true }), null);
+  assert.equal(visibleDemoUrl({ demo_url: "http://demo.example.org", demo_visible: true }), null);
+  assert.equal(visibleDemoUrl({ demo_url: "not a url", demo_visible: true }), null);
+  // Column missing entirely (migration 007 not applied) behaves like "no demo".
+  assert.equal(visibleDemoUrl({ demo_url: undefined, demo_visible: undefined }), null);
+});
+
+test("the project schema accepts only https demo links and preserves omitted optional demo fields", () => {
+  const base = projectBody;
+  assert.equal(projectInputSchema.safeParse({ ...base, demoUrl: "https://demo.example.org" }).success, true);
+  assert.equal(projectInputSchema.safeParse({ ...base, demoUrl: "" }).success, true);
+  assert.equal(projectInputSchema.safeParse({ ...base, demoUrl: null }).success, true);
+  assert.equal(projectInputSchema.safeParse({ ...base, demoUrl: "http://demo.example.org" }).success, false);
+  assert.equal(projectInputSchema.safeParse({ ...base, demoUrl: "javascript:alert(1)" }).success, false);
+
+  const parsed = projectInputSchema.safeParse(base);
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    // Omitted fields must remain omitted so an older or temporarily disabled form
+    // cannot accidentally clear an existing demo link or reset its visibility.
+    const serialized = JSON.parse(JSON.stringify(parsed.data)) as Record<string, unknown>;
+    assert.equal("demoVisible" in serialized, false);
+    assert.equal("demoUrl" in serialized, false);
+  }
+});
+
+
+test("only missing demo schema/RPC errors are cached as unavailable", () => {
+  assert.equal(isMissingDemoSchemaError({ code: "PGRST202", message: "Could not find the function in the schema cache" }), true);
+  assert.equal(isMissingDemoSchemaError({ code: "PGRST204", message: "Could not find the 'demo_url' column in the schema cache" }), true);
+  assert.equal(isMissingDemoSchemaError({ code: "42703", message: "column demo_url does not exist" }), true);
+  assert.equal(isMissingDemoSchemaError({ code: "ETIMEDOUT", message: "request timed out" }), false);
+  assert.equal(isMissingDemoSchemaError({ code: "42501", message: "permission denied" }), false);
+  assert.equal(isMissingDemoSchemaError(null), false);
 });

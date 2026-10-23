@@ -330,7 +330,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .form-success h3 { margin: 0; color: #244c3b; font-size: 16px; }
 .form-success p { margin: 5px 0 0; color: #5b7868; font-size: 12px; }
 .form-success-text { margin: 0; color: #3b7454; font-size: 12px; font-weight: 650; }
-.honeypot { position: absolute !important; top: auto !important; left: -10000px !important; width: 1px !important; height: 1px !important; overflow: hidden !important; }
+/* Hidden from sight and from assistive tech but still present in the HTML for bots.
+   Positioned with logical, non-negative offsets: the classic `left: -10000px` trick
+   adds 10000px of forward overflow in RTL and broke horizontal scrolling on /ar. */
+.honeypot { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; clip-path: inset(50%) !important; white-space: nowrap !important; inset-block-start: auto !important; inset-inline-start: auto !important; }
 
 /* About and privacy */
 .about-heritage { display: grid; grid-template-columns: .75fr 1.25fr; align-items: center; gap: 62px; padding-block: 45px 75px; border-top: 1px solid var(--line); }
@@ -970,4 +973,94 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* ---------------------------------------------------------------------------
+   Mobile overflow, navigation drawer and project demo (2026 revision)
+   ---------------------------------------------------------------------------
+   The closed drawer is translated outside the viewport with `transform`. Because it
+   is `position: fixed`, `body { overflow-x: hidden }` does not clip it, so it used to
+   extend the document's scrollable width to almost twice the viewport (measured:
+   scrollWidth 629px at a 320px viewport). Clipping on the root element, which
+   propagates to the viewport, removes that scroll area without introducing a new
+   scroll container (`overflow-x: clip` keeps `position: sticky` working, and the
+   `hidden` fallback covers older engines).
+   --------------------------------------------------------------------------- */
+html {
+  overflow-x: hidden;
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+/* <body> must not become a scroll container. When it does (overflow-x: hidden makes
+   overflow-y compute to auto), `position: sticky` elements such as the site header
+   have no scrolling ancestor left to stick to and scroll away with the page
+   (measured: header top -600px after scrolling 600px). Letting the root element own
+   the horizontal clipping keeps the header sticky and still stops the off-canvas
+   drawer from widening the document. */
+body {
+  overflow-x: visible;
+  max-width: 100%;
+}
+
+/* Scroll lock for the mobile drawer. It has to be applied to the root element as well,
+   because the viewport — not <body> — is the scrolling box. */
+html.mobile-nav-open {
+  overflow: hidden;
+}
+
+.mobile-navigation {
+  max-width: 100vw;
+  overscroll-behavior: contain;
+}
+
+/* Long unbroken strings (URLs, slugs, e-mail addresses) must never widen the page. */
+.detail-header h1,
+.detail-lede,
+.detail-prose p,
+.project-card h3,
+.detail-facts-card dd,
+.footer-brand-title {
+  overflow-wrap: break-word;
+}
+
+/* Project demo call to action on the public detail page. */
+.detail-demo {
+  margin: 20px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: 100%;
+}
+
+.detail-demo-link {
+  max-width: 100%;
+  gap: 9px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+/* Administrator notice shown when migration 007 has not been applied yet. */
+.form-warning {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid #e4cf9a;
+  border-left-width: 4px;
+  border-radius: 5px;
+  background: #fbf6e7;
+  color: #6b5518;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+:dir(rtl) .form-warning {
+  border-left-width: 1px;
+  border-right-width: 4px;
+}
+
+.form-field input:disabled,
+.form-field select:disabled {
+  background: #f2f2ee;
+  color: #7b878d;
+  cursor: not-allowed;
 }

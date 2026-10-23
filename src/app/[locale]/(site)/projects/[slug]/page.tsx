@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, ArrowUpRight, FileText, Play, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, ExternalLink, FileText, Play, ShieldCheck } from "lucide-react";
 import { notFound } from "next/navigation";
 import { t } from "@/i18n/dictionaries";
 import { isLocale, type Locale } from "@/i18n/locales";
 import { getPublishedProjectBySlug, searchProjects } from "@/lib/data";
 import { publicMediaEndpoint } from "@/lib/storage-urls";
 import { localizedDepartmentName } from "@/lib/departments";
-import { localizedField, type Project, type ProjectMedia } from "@/types/domain";
+import { localizedField, visibleDemoUrl, type Project, type ProjectMedia } from "@/types/domain";
 import { SmartImage } from "@/components/smart-image";
 import { Eyebrow, ProjectGrid } from "@/components/content-cards";
 import { ProjectViewTracker } from "@/features/projects/project-view-tracker";
@@ -64,13 +64,20 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   if (!project) notFound();
   const title = localizedField(project, "title", locale) || project.slug;
   const intro = localizedField(project, "short_description", locale) || localizedField(project, "description", locale);
-  const tags = project.tags ?? [];
+  const tags = (project.tags ?? []).filter((tag) => localizedField(tag, "label", locale) || tag.label_en);
   const media = project.media ?? [];
   const gallery = media.filter((item) => item.kind === "image" && item.is_public_approved && item.object_path);
   const documents = media.filter((item) => item.kind === "document" && item.is_public_approved);
   const videos = media.filter((item) => item.kind === "video" && item.video_url && item.is_public_approved);
   const date = project.completion_date ? new Date(`${project.completion_date}T00:00:00Z`).toLocaleDateString(locale === "ar" ? "ar-EG" : locale === "it" ? "it-IT" : "en-GB", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }) : null;
-  const teamMembers = project.team?.members ?? [];
+  const teamMembers = (project.team?.members ?? []).filter((member) => localizedField(member, "display_name", locale));
+  const awards = (project.awards ?? []).filter((award) => localizedField(award, "title", locale));
+  const departmentName = project.department ? localizedDepartmentName(project.department, locale) : "";
+  const teamName = project.team ? localizedField(project.team, "name", locale) : "";
+  const academicProgram = localizedField(project, "academic_program", locale);
+  const projectDuration = localizedField(project, "project_duration", locale);
+  const hasGraduationYear = Number.isFinite(Number(project.graduation_year)) && Number(project.graduation_year) > 0;
+  const demoUrl = visibleDemoUrl(project);
   const relatedResult = project.department?.slug ? await searchProjects(locale, { department: project.department.slug, pageSize: 4, sort: "newest" }) : { items: [], total: 0, page: 1, pageSize: 4, configured: true };
   const related = relatedResult.items.filter((item) => item.id !== project.id).slice(0, 3);
 
@@ -83,16 +90,23 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       </div>
       <header className="detail-header page-container">
         <div className="detail-header-copy">
-          <Eyebrow>{project.department ? localizedDepartmentName(project.department, locale) : t(locale, "nav.projects")}</Eyebrow>
+          <Eyebrow>{departmentName || t(locale, "nav.projects")}</Eyebrow>
           <h1>{title}</h1>
           {intro && <p className="detail-lede">{intro}</p>}
           <div className="detail-header-meta">
-            <span>{project.graduation_year}</span>
-            {project.team && <><span className="meta-dot" aria-hidden="true" /><span>{localizedField(project.team, "name", locale)}</span></>}
+            {hasGraduationYear && <span>{project.graduation_year}</span>}
+            {teamName && <><span className="meta-dot" aria-hidden="true" /><span>{teamName}</span></>}
             {project.featured && <span className="badge badge-red">{t(locale, "projects.featuredBadge")}</span>}
             {project.award_winning && <span className="badge badge-gold">{t(locale, "projects.awardBadge")}</span>}
           </div>
           {industryStatusText(project, locale) && <p className="detail-industry-status"><span className="status-dot" aria-hidden="true" />{industryStatusText(project, locale)}</p>}
+          {demoUrl && (
+            <p className="detail-demo">
+              <a className="button button-red detail-demo-link" href={demoUrl} target="_blank" rel="noopener noreferrer nofollow" aria-label={`${t(locale, "detail.demo")} — ${t(locale, "detail.demoOpensNewTab")}`}>
+                <ExternalLink size={16} aria-hidden="true" />{t(locale, "detail.demo")}
+              </a>
+            </p>
+          )}
         </div>
         <div className="detail-cover-wrap">
           <SmartImage bucket="project-covers" path={project.cover_image_path} alt={localizedField(project, "cover_alt", locale) || title} entity="project-cover" slug={project.slug} className="detail-cover-image" sizes="(max-width: 900px) 100vw, 55vw" priority fallbackLabel={t(locale, "common.noImage")} />
@@ -122,17 +136,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
           {documents.length > 0 && <section className="detail-text-section"><h2>{t(locale, "detail.documents")}</h2><div className="detail-media-links">{documents.map((document) => <a key={document.id} href={`/api/public/documents/${document.id}`} target="_blank" rel="noreferrer"><span><FileText size={17} aria-hidden="true" /></span>{localizedField(document, "title", locale) || t(locale, "detail.documents")}<ArrowUpRight size={15} aria-hidden="true" /></a>)}</div></section>}
 
-          {project.awards?.length ? <section className="detail-text-section"><h2>{t(locale, "detail.awards")}</h2><ul className="detail-award-list">{project.awards.map((award) => <li key={award.id}><ShieldCheck size={18} aria-hidden="true" /><div><strong>{localizedField(award, "title", locale)}</strong>{localizedField(award, "issuer", locale) && <span>{localizedField(award, "issuer", locale)}</span>}</div></li>)}</ul></section> : null}
+          {awards.length > 0 ? <section className="detail-text-section"><h2>{t(locale, "detail.awards")}</h2><ul className="detail-award-list">{awards.map((award) => <li key={award.id}><ShieldCheck size={18} aria-hidden="true" /><div><strong>{localizedField(award, "title", locale)}</strong>{localizedField(award, "issuer", locale) && <span>{localizedField(award, "issuer", locale)}</span>}</div></li>)}</ul></section> : null}
         </div>
 
         <aside className="detail-sidebar" aria-label={t(locale, "detail.breadcrumb")}>
           <div className="detail-facts-card">
             <h2>{t(locale, "detail.breadcrumb")}</h2>
             <dl>
-              {project.department && <div><dt>{t(locale, "common.department")}</dt><dd>{localizedDepartmentName(project.department, locale)}</dd></div>}
-              <div><dt>{t(locale, "common.year")}</dt><dd>{project.graduation_year}</dd></div>
-              {project.academic_program_en && <div><dt>{t(locale, "detail.program")}</dt><dd>{localizedField(project, "academic_program", locale)}</dd></div>}
-              {project.project_duration_en && <div><dt>{t(locale, "detail.duration")}</dt><dd>{localizedField(project, "project_duration", locale)}</dd></div>}
+              {departmentName && <div><dt>{t(locale, "common.department")}</dt><dd>{departmentName}</dd></div>}
+              {hasGraduationYear && <div><dt>{t(locale, "common.year")}</dt><dd>{project.graduation_year}</dd></div>}
+              {academicProgram && <div><dt>{t(locale, "detail.program")}</dt><dd>{academicProgram}</dd></div>}
+              {projectDuration && <div><dt>{t(locale, "detail.duration")}</dt><dd>{projectDuration}</dd></div>}
               {date && <div><dt>{t(locale, "detail.completion")}</dt><dd>{date}</dd></div>}
               {industryStatusText(project, locale) && <div><dt>{t(locale, "detail.industryStatus")}</dt><dd>{industryStatusText(project, locale)}</dd></div>}
             </dl>

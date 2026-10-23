@@ -47,6 +47,8 @@ type ProjectFormState = {
   awardWinning: boolean;
   industryStatus: "none" | "suitable" | "seeking_partner" | "in_development";
   coverImagePath: string;
+  demoUrl: string;
+  demoVisible: boolean;
   tagEn: string;
   tagAr: string;
   tagIt: string;
@@ -66,7 +68,7 @@ function localizedFromUnknown(value: unknown): Localized {
 }
 function formFromRecord(record?: ProjectRecord): ProjectFormState {
   if (!record) return {
-    slug: "", title: emptyLocalized(), shortDescription: emptyLocalized(), description: emptyLocalized(), problemStatement: emptyLocalized(), objectives: emptyLocalized(), proposedSolution: emptyLocalized(), technicalImplementation: emptyLocalized(), academicProgram: emptyLocalized(), projectDuration: emptyLocalized(), supervisorName: emptyLocalized(), coverAlt: emptyLocalized(), departmentId: "", teamId: "", graduationYear: String(new Date().getFullYear()), completionDate: "", status: "draft", featured: false, awardWinning: false, industryStatus: "none", coverImagePath: "", tagEn: "", tagAr: "", tagIt: "", categoryEn: "", categoryAr: "", categoryIt: "", specifications: [], media: [], awards: [],
+    slug: "", title: emptyLocalized(), shortDescription: emptyLocalized(), description: emptyLocalized(), problemStatement: emptyLocalized(), objectives: emptyLocalized(), proposedSolution: emptyLocalized(), technicalImplementation: emptyLocalized(), academicProgram: emptyLocalized(), projectDuration: emptyLocalized(), supervisorName: emptyLocalized(), coverAlt: emptyLocalized(), departmentId: "", teamId: "", graduationYear: String(new Date().getFullYear()), completionDate: "", status: "draft", featured: false, awardWinning: false, industryStatus: "none", coverImagePath: "", demoUrl: "", demoVisible: true, tagEn: "", tagAr: "", tagIt: "", categoryEn: "", categoryAr: "", categoryIt: "", specifications: [], media: [], awards: [],
   };
   const localized = (stem: string): Localized => ({ en: optionalText(record[`${stem}_en`]), ar: optionalText(record[`${stem}_ar`]), it: optionalText(record[`${stem}_it`]) });
   const tags = (record.tags ?? []) as Array<Record<string, string>>;
@@ -82,6 +84,7 @@ function formFromRecord(record?: ProjectRecord): ProjectFormState {
     title: localized("title"), shortDescription: localized("short_description"), description: localized("description"), problemStatement: localized("problem_statement"), objectives: localized("objectives"), proposedSolution: localized("proposed_solution"), technicalImplementation: localized("technical_implementation"), academicProgram: localized("academic_program"), projectDuration: localized("project_duration"), supervisorName: localized("supervisor_name"), coverAlt: localized("cover_alt"),
     departmentId: optionalText(record.department_id), teamId: optionalText(record.team_id), graduationYear: optionalText(record.graduation_year) || String(new Date().getFullYear()), completionDate: optionalText(record.completion_date).slice(0, 10),
     status: (record.status as ProjectFormState["status"]) || "draft", featured: Boolean(record.featured), awardWinning: Boolean(record.award_winning), industryStatus: (record.industry_status as ProjectFormState["industryStatus"]) || "none", coverImagePath: optionalText(record.cover_image_path),
+    demoUrl: optionalText(record.demo_url), demoVisible: record.demo_visible !== false,
     tagEn: tags.map((item) => item.label_en).filter(Boolean).join(", "), tagAr: tags.map((item) => item.label_ar).filter(Boolean).join(", "), tagIt: tags.map((item) => item.label_it).filter(Boolean).join(", "),
     categoryEn: categories.map((item) => item.label_en).filter(Boolean).join(", "), categoryAr: categories.map((item) => item.label_ar).filter(Boolean).join(", "), categoryIt: categories.map((item) => item.label_it).filter(Boolean).join(", "),
     specifications: specificationRows,
@@ -133,7 +136,7 @@ function mergeLocalized(media: MediaDraft, stem: "title" | "caption" | "alt", va
   return { ...media, [`${stem}_en`]: value.en || null, [`${stem}_ar`]: value.ar || null, [`${stem}_it`]: value.it || null } as MediaDraft;
 }
 
-export function AdminProjectForm({ locale, departments, teams, initialProject }: { locale: Locale; departments: DepartmentOption[]; teams: TeamOption[]; initialProject?: ProjectRecord | null }) {
+export function AdminProjectForm({ locale, departments, teams, initialProject, demoSupported = false }: { locale: Locale; departments: DepartmentOption[]; teams: TeamOption[]; initialProject?: ProjectRecord | null; demoSupported?: boolean }) {
   const router = useRouter();
   const initialState = formFromRecord(initialProject ?? undefined);
   const [form, setForm] = useState<ProjectFormState>(initialState);
@@ -190,6 +193,7 @@ export function AdminProjectForm({ locale, departments, teams, initialProject }:
       awardWinning: form.awardWinning,
       industryStatus: form.industryStatus,
       coverImagePath: form.coverImagePath || null,
+      ...(demoSupported ? { demoUrl: form.demoUrl.trim() || null, demoVisible: form.demoVisible } : {}),
       technicalSpecifications: specifications,
       tags: localizedList(form.tagEn, form.tagAr, form.tagIt),
       categories: localizedList(form.categoryEn, form.categoryAr, form.categoryIt),
@@ -261,6 +265,30 @@ export function AdminProjectForm({ locale, departments, teams, initialProject }:
             <label className="check-control"><input type="checkbox" checked={form.awardWinning} onChange={(event) => setField("awardWinning", event.target.checked)} /><span>{t(locale, "admin.awardWinning")}</span></label>
           </div>
           <label className="form-field"><span>{t(locale, "admin.industryStatusLabel")}</span><select value={form.industryStatus} onChange={(event) => setField("industryStatus", event.target.value as ProjectFormState["industryStatus"])}><option value="none">{t(locale, "admin.statusNone")}</option><option value="suitable">{t(locale, "admin.statusSuitable")}</option><option value="seeking_partner">{t(locale, "admin.statusSeeking")}</option><option value="in_development">{t(locale, "admin.statusDeveloping")}</option></select></label>
+        </section>
+
+        <section className="admin-form-section">
+          <div className="admin-form-section-heading"><span className="form-section-number">02b</span><div><h2>{t(locale, "admin.demoSection")}</h2><p>{t(locale, "admin.demoUrlHint")}</p></div></div>
+          {!demoSupported && <p className="form-warning" role="status">{t(locale, "admin.demoUnavailable")}</p>}
+          <label className="form-field">
+            <span>{t(locale, "admin.demoUrl")}</span>
+            <input
+              type="url"
+              inputMode="url"
+              dir="ltr"
+              placeholder="https://"
+              pattern="https://.*"
+              title={t(locale, "admin.demoUrlHint")}
+              value={form.demoUrl}
+              disabled={!demoSupported}
+              onChange={(event) => setField("demoUrl", event.target.value)}
+              maxLength={1200}
+            />
+          </label>
+          <label className="check-control">
+            <input type="checkbox" checked={form.demoVisible} disabled={!demoSupported} onChange={(event) => setField("demoVisible", event.target.checked)} />
+            <span>{t(locale, "admin.demoVisible")}</span>
+          </label>
         </section>
 
         <section className="admin-form-section">

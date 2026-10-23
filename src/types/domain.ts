@@ -136,6 +136,10 @@ export interface Project {
   award_winning: boolean;
   industry_status: IndustryStatus;
   cover_image_path: string | null;
+  /** Optional public demo link. Absent until migration 007 has been applied. */
+  demo_url?: string | null;
+  /** When false the demo link is stored but never rendered publicly. */
+  demo_visible?: boolean | null;
   cover_alt_en?: string | null;
   cover_alt_ar?: string | null;
   cover_alt_it?: string | null;
@@ -174,4 +178,24 @@ export function localizedField<T extends object>(
     (value) => typeof value === "string" && value.trim().length > 0,
   );
   return typeof chosen === "string" ? chosen.trim() : "";
+}
+
+/**
+ * Resolves the public demo link for a project.
+ *
+ * The link is only returned when it exists, has not been explicitly hidden by the
+ * administrator, and is a well-formed HTTPS URL. Any other state (missing column,
+ * blank value, `javascript:` payload, malformed text) yields null so that callers
+ * render nothing instead of an empty or unsafe button.
+ */
+export function visibleDemoUrl(project: { demo_url?: string | null; demo_visible?: boolean | null } | null | undefined): string | null {
+  if (!project || project.demo_visible === false) return null;
+  const raw = typeof project.demo_url === "string" ? project.demo_url.trim() : "";
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }

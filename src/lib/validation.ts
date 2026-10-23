@@ -14,6 +14,7 @@ const requiredTranslated = (minimum = 1, limit = 12000) => z.object({
 
 const safeSlug = z.string().trim().min(2).max(160).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Invalid slug");
 const safeHttpsUrl = z.string().url().max(1200).refine((value) => { try { return new URL(value).protocol === "https:"; } catch { return false; } }, "HTTPS URLs only.");
+const optionalHttpsUrl = z.union([z.literal(""), safeHttpsUrl]).nullable().optional().transform((value) => value === "" ? null : value);
 
 export const projectInputSchema = z.object({
   slug: safeSlug,
@@ -37,6 +38,8 @@ export const projectInputSchema = z.object({
   awardWinning: z.boolean().default(false),
   industryStatus: z.enum(["none", "suitable", "seeking_partner", "in_development"]).default("none"),
   coverImagePath: z.string().max(500).nullable().optional(),
+  demoUrl: optionalHttpsUrl,
+  demoVisible: z.boolean().optional(),
   technicalSpecifications: z.record(z.string().trim().min(1).max(120), z.object({ label: translated(1, 120), value: translated(1, 1000) })).default({}).refine((value) => Object.keys(value).length <= 40, "Too many specifications."),
   tags: z.array(z.object({ slug: safeSlug, label_en: z.string().trim().min(1).max(80), label_ar: optionalText(80), label_it: optionalText(80) })).max(20).default([]),
   categories: z.array(z.object({ slug: safeSlug, label_en: z.string().trim().min(1).max(80), label_ar: optionalText(80), label_it: optionalText(80) })).max(12).default([]),

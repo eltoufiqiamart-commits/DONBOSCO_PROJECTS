@@ -1,8 +1,8 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useTransition } from "react";
-import type { Locale } from "@/i18n/locales";
+import { useEffect, useTransition } from "react";
+import { directionFor, isLocale, type Locale } from "@/i18n/locales";
 import { t } from "@/i18n/dictionaries";
 
 type Props = { locale: Locale; compact?: boolean };
@@ -58,11 +58,32 @@ export function LanguageSwitcher({ locale, compact = false }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
+  /*
+   * The root layout derives `<html lang>` and `<html dir>` from the request locale,
+   * but the App Router does not re-render a root layout during a client-side
+   * navigation. Switching English -> Arabic therefore changed the URL and the copy
+   * while the document stayed LTR until a hard reload. Keep the document attributes
+   * in sync with whichever locale is actually rendered.
+   */
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.documentElement.dir = directionFor(locale);
+  }, [locale]);
+
   function changeLanguage(next: Locale) {
-    if (next === locale) return;
+    if (next === locale || !isLocale(next)) return;
     document.cookie = `preferred-locale=${next}; path=/; max-age=31536000; samesite=lax`;
-    const translatedPath = pathname.replace(/^\/(en|ar|it)(?=\/|$)/, `/${next}`);
-    startTransition(() => router.push(translatedPath));
+    const segment = pathname.split("/")[1] ?? "";
+    const translatedPath = isLocale(segment)
+      ? pathname.replace(/^\/(en|ar|it)(?=\/|$)/, `/${next}`)
+      : `/${next}${pathname === "/" ? "" : pathname}`;
+    const queryAndHash = typeof window === "undefined" ? "" : `${window.location.search}${window.location.hash}`;
+
+    // Flip the document direction immediately so the layout reflows without waiting
+    // for the server round-trip; the effect above re-asserts it after rendering.
+    document.documentElement.lang = next;
+    document.documentElement.dir = directionFor(next);
+    startTransition(() => router.push(`${translatedPath}${queryAndHash}`));
   }
 
   return (

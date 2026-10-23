@@ -1,5 +1,7 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createPublicServerSupabase } from "@/lib/supabase/server";
+import { isMissingDemoSchemaError } from "@/lib/demo-schema";
 import { defaultDepartments } from "@/lib/departments";
 import type { Department, Project, ProjectListResult, PublicTeam } from "@/types/domain";
 import type { Locale } from "@/i18n/locales";
@@ -24,6 +26,36 @@ export interface PublicFacets {
 }
 
 const PROJECT_EMBED = `id,slug,title_en,title_ar,title_it,short_description_en,short_description_ar,short_description_it,description_en,description_ar,description_it,problem_statement_en,problem_statement_ar,problem_statement_it,objectives_en,objectives_ar,objectives_it,proposed_solution_en,proposed_solution_ar,proposed_solution_it,technical_implementation_en,technical_implementation_ar,technical_implementation_it,technical_specifications,academic_program_en,academic_program_ar,academic_program_it,project_duration_en,project_duration_ar,project_duration_it,department_id,team_id,graduation_year,completion_date,status,featured,award_winning,industry_status,cover_image_path,cover_alt_en,cover_alt_ar,cover_alt_it,views_count,published_at,created_at,updated_at,department:departments!projects_department_id_fkey(*),team:teams!projects_team_id_fkey(*,department:departments!teams_department_id_fkey(*),team_members(student:students!team_members_student_id_fkey(id,display_name_en,display_name_ar,display_name_it,bio_en,bio_ar,bio_it,profile_image_path))),project_tags(tags(*)),project_categories(categories(*)),project_media(*)`;
+
+/**
+ * The public demo link lives in optional columns added by migration 007. Public
+ * pages retrieve it through a restricted RPC that returns a URL only when the project
+ * is published and the link is visible. This avoids exposing hidden links through
+ * direct PostgREST column reads. If migration 007 is absent, the public page simply
+ * renders without a demo button. Only a confirmed missing-schema error is briefly
+ * cached; transient failures are retried on later requests.
+ */
+type DemoColumns = { demo_url: string | null; demo_visible: boolean | null };
+// Missing-column responses are briefly cached so a pre-migration deployment does not
+// repeat a known schema error on every project detail request. Do not permanently
+// cache arbitrary failures: a timeout, permission/configuration issue, or a migration
+// applied while an instance is warm must not disable demo links for the process life.
+const DEMO_SCHEMA_NEGATIVE_CACHE_MS = 60_000;
+let demoColumnsUnavailableUntil = 0;
+
+async function readProjectDemoColumns(supabase: SupabaseClient, projectId: string): Promise<DemoColumns | null> {
+  if (Date.now() < demoColumnsUnavailableUntil || !projectId) return null;
+  const { data, error } = await supabase.rpc("get_public_project_demo_url", { p_project_id: projectId });
+  if (error) {
+    if (isMissingDemoSchemaError(error)) {
+      demoColumnsUnavailableUntil = Date.now() + DEMO_SCHEMA_NEGATIVE_CACHE_MS;
+    }
+    return null;
+  }
+  demoColumnsUnavailableUntil = 0;
+  // The RPC returns a URL only for published projects with demo_visible=true.
+  return { demo_url: typeof data === "string" ? data : null, demo_visible: true };
+}
 
 function normalizeProject(input: unknown): Project {
   const row = (input ?? {}) as Record<string, unknown>;
@@ -131,6 +163,11 @@ export async function getPublishedProjectBySlug(slug: string): Promise<Project |
   if (error || !data) return null;
   const normalized = normalizeProject(data);
   normalized.awards = ((data as Record<string, unknown>).project_awards as Project["awards"])?.filter((award) => award.verified) ?? [];
+  const demo = await readProjectDemoColumns(supabase, String((data as Record<string, unknown>).id ?? ""));
+  if (demo) {
+    normalized.demo_url = demo.demo_url;
+    normalized.demo_visible = demo.demo_visible;
+  }
   return normalized;
 }
 

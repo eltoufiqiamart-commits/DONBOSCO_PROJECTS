@@ -11,8 +11,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const dictionary = getDictionary(locale);
   return {
     title: {
-      default: "Don Bosco Projects · Don Bosco Cairo Institute",
-      template: "%s · Don Bosco Projects",
+      default: `${dictionary["site.name"]} · ${dictionary["footer.institute"]}`,
+      template: `%s · ${dictionary["site.name"]}`,
     },
     description: dictionary["site.descriptor"],
     ...(process.env.NEXT_PUBLIC_SITE_URL ? { metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL) } : {}),
